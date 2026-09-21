@@ -274,7 +274,7 @@ export default function PluginsPage() {
         </p>
       </div>
 
-      {/* CONNECTION MODAL */}
+      {/* ✅ UPDATED CONNECTION MODAL WITH ACTUAL OAUTH REDIRECT ✅ */}
       {selectedPlugin && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-6">
           <div className="bg-[#F4EDE1] rounded-2xl border hairline p-8 max-w-md w-full shadow-2xl">
@@ -330,17 +330,27 @@ export default function PluginsPage() {
                 </div>
               </div>
             ) : (
+              // ✅ YE HAI ACTUAL OAUTH FIX! Ab ye seedha API route par le jayega
               <div className="text-center py-6">
                 <AlertCircle className="w-12 h-12 text-gold mx-auto mb-4" />
                 <p className="text-muted mb-6 leading-relaxed">
-                  OAuth integration for <strong className="text-brown">{selectedPlugin.name}</strong> is currently in development. You will be able to connect your account directly once available.
+                  You are about to connect your <strong className="text-brown">{selectedPlugin.name}</strong> account. You will be redirected to authorize VEQ.
                 </p>
-                <button
-                  onClick={() => { setSelectedPlugin(null); setWebhookUrl(""); }}
-                  className="px-8 py-3 bg-brown text-cream rounded-xl hover:bg-brown-deep transition-colors font-mono text-sm font-semibold"
-                >
-                  Close
-                </button>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => { setSelectedPlugin(null); setWebhookUrl(""); }}
+                    className="px-6 py-3 border hairline rounded-xl text-brown hover:bg-brown/5 transition-colors font-mono text-sm font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <a
+                    href={`/api/auth/${selectedPlugin.id}`}
+                    className="px-8 py-3 bg-brown text-cream rounded-xl hover:bg-brown-deep transition-colors font-mono text-sm font-semibold flex items-center gap-2"
+                  >
+                    <Plug className="w-4 h-4" />
+                    Connect {selectedPlugin.name}
+                  </a>
+                </div>
               </div>
             )}
           </div>
