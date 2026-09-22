@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import {
   Plug,
   CheckCircle2,
-  Code2,
   MessageSquare,
   Calendar,
   FileText,
@@ -29,14 +28,6 @@ type Plugin = {
 }
 
 const allPlugins: Plugin[] = [
-  {
-    id: "github",
-    name: "GitHub",
-    description: "Track commits, pull requests, and code reviews.",
-    icon: Code2,
-    category: "popular",
-    connectionType: "oauth"
-  },
   {
     id: "slack",
     name: "Slack",
@@ -82,14 +73,6 @@ const allPlugins: Plugin[] = [
     name: "Zoom",
     description: "Access meeting recordings, transcripts, and AI summaries.",
     icon: Video,
-    category: "productivity",
-    connectionType: "oauth"
-  },
-  {
-    id: "asana",
-    name: "Asana",
-    description: "Track tasks, projects, and team progress.",
-    icon: ListTodo,
     category: "productivity",
     connectionType: "oauth"
   },
@@ -270,7 +253,7 @@ export default function PluginsPage() {
 
       <div className="rounded-2xl border hairline border-dashed border-cream-deep p-8 text-center">
         <p className="text-sm text-muted font-mono">
-          Microsoft Teams, Dropbox, and more custom integrations coming soon...
+          GitHub, Microsoft Teams, Dropbox, and more custom integrations coming soon...
         </p>
       </div>
 
