@@ -1,3 +1,4 @@
+// app/api/meeting-intelligence/route.ts
 import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
         const companyId = profile?.company_id;
         if (!companyId) return NextResponse.json({ error: 'No company found' }, { status: 400 });
 
-        // 3. PARSE FORMDATA (Handles BOTH File Uploads and Text Pasting)
+        // 3. PARSE FORMDATA
         const formData = await req.formData();
         const meetingTitle = formData.get('meetingTitle') as string;
         const date = formData.get('date') as string;
@@ -34,27 +35,25 @@ export async function POST(req: Request) {
         const file = formData.get('file') as File | null;
         const textTranscript = formData.get('transcript') as string | null;
 
-        const participants = participantsStr ? participantsStr.split(',').map(p => p.trim()) : [];
+        const participants = participantsStr ? participantsStr.split(',').map(p => p.trim()).filter(Boolean) : [];
         let transcriptText = "";
 
         // 4. INTELLIGENT PROCESSING: File OR Text
         if (inputMode === 'text' && textTranscript && textTranscript.trim().length > 0) {
-            // User pasted text directly
             transcriptText = textTranscript;
         } else if (inputMode === 'file' && file) {
-            // User uploaded audio/video -> Transcribe using Groq Whisper
+            // Transcribe using Groq Whisper
             const transcription = await groq.audio.transcriptions.create({
                 file: file,
                 model: 'whisper-large-v3',
                 response_format: 'text',
-                language: 'en' // Can be made dynamic later if needed
+                language: 'en'
             });
             transcriptText = transcription as unknown as string;
         } else {
             return NextResponse.json({ error: 'Please provide either an audio/video file or a text transcript.' }, { status: 400 });
         }
 
-        // Validate that we actually got meaningful text
         if (!transcriptText || transcriptText.trim().length < 20) {
             return NextResponse.json({ error: 'Could not extract meaningful content from the input.' }, { status: 400 });
         }
@@ -87,131 +86,137 @@ export async function POST(req: Request) {
 
         const structuredData = JSON.parse(completion.choices[0].message.content || '{}');
         const meetingId = `mtg_${Date.now()}`;
-
-        // Track where this data came from for audit purposes
         const sourceType = inputMode === 'file' ? 'meeting_intelligence_audio' : 'meeting_intelligence_text';
 
+        // 6. BUILD GRAPH ARRAYS (NO DATABASE CALLS YET - PREVENTS DUPLICATES!)
         const graphNodes: any[] = [];
         const graphEdges: any[] = [];
 
-        // 6. CREATE THE MEETING NODE
-        const { data: meetingNode } = await supabase
-            .from('memory_nodes')
-            .insert({
-                company_id: companyId,
-                node_type: 'meeting',
-                node_label: meetingTitle || 'Untitled Meeting',
-                node_data: { date, participants, key_context: structuredData.key_context || [], transcript_snippet: transcriptText.substring(0, 500) },
-                source_type: sourceType,
-                source_id: meetingId,
-                created_by: user.id
-            })
-            .select()
-            .single();
+        // Meeting Node
+        graphNodes.push({
+            company_id: companyId,
+            node_type: 'meeting',
+            node_label: meetingTitle || 'Untitled Meeting',
+            node_data: { date, participants, key_context: structuredData.key_context || [], transcript_snippet: transcriptText.substring(0, 500) },
+            source_type: sourceType,
+            source_id: meetingId,
+            created_by: user.id
+        });
 
-        if (meetingNode) graphNodes.push(meetingNode);
-
-        // 7. CREATE PARTICIPANT NODES & EDGES
-        if (participants.length > 0 && meetingNode) {
+        // Participant Nodes & Edges
+        if (participants.length > 0) {
             for (const person of participants) {
-                if (!person) continue;
-                const { data: personNode } = await supabase
-                    .from('memory_nodes')
-                    .insert({
-                        company_id: companyId,
-                        node_type: 'person',
-                        node_label: person,
-                        node_data: { role: 'Meeting Participant' },
-                        source_type: sourceType,
-                        source_id: meetingId,
-                        created_by: user.id
-                    })
-                    .select()
-                    .single();
+                graphNodes.push({
+                    company_id: companyId,
+                    node_type: 'person',
+                    node_label: person,
+                    node_data: { role: 'Meeting Participant' },
+                    source_type: sourceType,
+                    source_id: meetingId,
+                    created_by: user.id
+                });
+                // We will link this after we get the meeting node ID from DB
+            }
+        }
 
-                if (personNode) {
-                    graphNodes.push(personNode);
+        // Decision Nodes
+        if (structuredData.decisions) {
+            for (const dec of structuredData.decisions) {
+                graphNodes.push({
+                    company_id: companyId, node_type: 'decision', node_label: dec.topic,
+                    node_data: { context: dec.context, reasoning: dec.reasoning, owner: dec.owner },
+                    source_type: sourceType, source_id: meetingId, created_by: user.id
+                });
+            }
+        }
+
+        // Task Nodes
+        if (structuredData.tasks) {
+            for (const task of structuredData.tasks) {
+                graphNodes.push({
+                    company_id: companyId, node_type: 'task', node_label: task.title,
+                    node_data: { description: task.description, owner: task.owner, deadline: task.deadline, priority: task.priority },
+                    source_type: sourceType, source_id: meetingId, created_by: user.id
+                });
+            }
+        }
+
+        // Risk Nodes
+        if (structuredData.risks) {
+            for (const risk of structuredData.risks) {
+                graphNodes.push({
+                    company_id: companyId, node_type: 'risk', node_label: risk.description,
+                    node_data: { impact: risk.impact, mitigation: risk.mitigation },
+                    source_type: sourceType, source_id: meetingId, created_by: user.id
+                });
+            }
+        }
+
+        // SOP/Process Nodes
+        if (structuredData.sop_updates) {
+            for (const sop of structuredData.sop_updates) {
+                graphNodes.push({
+                    company_id: companyId, node_type: 'process', node_label: `SOP Update: ${sop.current_process}`,
+                    node_data: { suggested_change: sop.suggested_change, reason: sop.reason },
+                    source_type: sourceType, source_id: meetingId, created_by: user.id
+                });
+            }
+        }
+
+        // 7. BATCH INSERT ALL NODES (ONE SINGLE FAST CALL)
+        const { data: insertedNodes, error: nodeError } = await supabase.from('memory_nodes').insert(graphNodes).select();
+
+        if (nodeError) {
+            console.error('Meeting Intelligence Node Insert Error:', nodeError);
+            return NextResponse.json({ success: false, error: 'Failed to save knowledge graph nodes' }, { status: 500 });
+        }
+
+        // 8. BUILD EDGES USING NEWLY GENERATED NODE IDs
+        if (insertedNodes && insertedNodes.length > 0) {
+            const meetingNode = insertedNodes.find((n: any) => n.node_type === 'meeting');
+
+            if (meetingNode) {
+                // Link Participants
+                insertedNodes.filter((n: any) => n.node_type === 'person').forEach((personNode: any) => {
                     graphEdges.push({
                         company_id: companyId,
                         source_node_id: personNode.id,
                         target_node_id: meetingNode.id,
                         edge_type: 'attended',
-                        edge_label: `${person} attended ${meetingTitle}`,
+                        edge_label: `${personNode.node_label} attended ${meetingNode.node_label}`,
                         source_type: sourceType,
                         source_id: meetingId,
                         created_by: user.id
                     });
-                }
+                });
+
+                // Link Decisions, Tasks, Risks, Processes to Meeting
+                const otherNodes = insertedNodes.filter((n: any) => n.node_type !== 'meeting' && n.node_type !== 'person');
+                otherNodes.forEach((node: any) => {
+                    let edgeType = 'related_to';
+                    let edgeLabel = `Related to meeting`;
+
+                    if (node.node_type === 'decision') { edgeType = 'generated_decision'; edgeLabel = `Meeting generated decision: ${node.node_label}`; }
+                    if (node.node_type === 'task') { edgeType = 'created_task'; edgeLabel = `Meeting created task: ${node.node_label}`; }
+                    if (node.node_type === 'risk') { edgeType = 'identified_risk'; edgeLabel = `Meeting identified risk: ${node.node_label}`; }
+                    if (node.node_type === 'process') { edgeType = 'suggested_process_update'; edgeLabel = `Meeting suggested SOP update`; }
+
+                    graphEdges.push({
+                        company_id: companyId,
+                        source_node_id: meetingNode.id,
+                        target_node_id: node.id,
+                        edge_type: edgeType,
+                        edge_label: edgeLabel,
+                        source_type: sourceType,
+                        source_id: meetingId,
+                        created_by: user.id
+                    });
+                });
             }
         }
 
-        // 8. CREATE DECISION, TASK, RISK, AND PROCESS NODES & EDGES
-        if (structuredData.decisions && meetingNode) {
-            for (const dec of structuredData.decisions) {
-                const { data: decisionNode } = await supabase.from('memory_nodes').insert({
-                    company_id: companyId, node_type: 'decision', node_label: dec.topic,
-                    node_data: { context: dec.context, reasoning: dec.reasoning, owner: dec.owner },
-                    source_type: sourceType, source_id: meetingId, created_by: user.id
-                }).select().single();
-                if (decisionNode) {
-                    graphNodes.push(decisionNode);
-                    graphEdges.push({ company_id: companyId, source_node_id: meetingNode.id, target_node_id: decisionNode.id, edge_type: 'generated_decision', edge_label: `Meeting generated decision: ${dec.topic}`, source_type: sourceType, source_id: meetingId, created_by: user.id });
-                }
-            }
-        }
-
-        if (structuredData.tasks && meetingNode) {
-            for (const task of structuredData.tasks) {
-                const { data: taskNode } = await supabase.from('memory_nodes').insert({
-                    company_id: companyId, node_type: 'task', node_label: task.title,
-                    node_data: { description: task.description, owner: task.owner, deadline: task.deadline, priority: task.priority },
-                    source_type: sourceType, source_id: meetingId, created_by: user.id
-                }).select().single();
-                if (taskNode) {
-                    graphNodes.push(taskNode);
-                    graphEdges.push({ company_id: companyId, source_node_id: meetingNode.id, target_node_id: taskNode.id, edge_type: 'created_task', edge_label: `Meeting created task: ${task.title}`, source_type: sourceType, source_id: meetingId, created_by: user.id });
-                }
-            }
-        }
-
-        if (structuredData.risks && meetingNode) {
-            for (const risk of structuredData.risks) {
-                const { data: riskNode } = await supabase.from('memory_nodes').insert({
-                    company_id: companyId, node_type: 'risk', node_label: risk.description,
-                    node_data: { impact: risk.impact, mitigation: risk.mitigation },
-                    source_type: sourceType, source_id: meetingId, created_by: user.id
-                }).select().single();
-                if (riskNode) {
-                    graphNodes.push(riskNode);
-                    graphEdges.push({ company_id: companyId, source_node_id: meetingNode.id, target_node_id: riskNode.id, edge_type: 'identified_risk', edge_label: `Meeting identified risk`, source_type: sourceType, source_id: meetingId, created_by: user.id });
-                }
-            }
-        }
-
-        if (structuredData.sop_updates && meetingNode) {
-            for (const sop of structuredData.sop_updates) {
-                const { data: processNode } = await supabase.from('memory_nodes').insert({
-                    company_id: companyId, node_type: 'process', node_label: `SOP Update: ${sop.current_process}`,
-                    node_data: { suggested_change: sop.suggested_change, reason: sop.reason },
-                    source_type: sourceType, source_id: meetingId, created_by: user.id
-                }).select().single();
-                if (processNode) {
-                    graphNodes.push(processNode);
-                    graphEdges.push({ company_id: companyId, source_node_id: meetingNode.id, target_node_id: processNode.id, edge_type: 'suggested_process_update', edge_label: `Meeting suggested SOP update`, source_type: sourceType, source_id: meetingId, created_by: user.id });
-                }
-            }
-        }
-
-        // 9. BATCH INSERT ALL NODES AND EDGES
-        let insertedNodesCount = 0;
+        // 9. BATCH INSERT ALL EDGES
         let insertedEdgesCount = 0;
-
-        if (graphNodes.length > 0) {
-            const { data: insertedNodes, error: nodeError } = await supabase.from('memory_nodes').insert(graphNodes).select();
-            if (nodeError) console.error('Meeting Intelligence Node Insert Error:', nodeError);
-            else insertedNodesCount = insertedNodes?.length || 0;
-        }
-
         if (graphEdges.length > 0) {
             const { error: edgeError } = await supabase.from('memory_edges').insert(graphEdges);
             if (edgeError) console.error('Meeting Intelligence Edge Insert Error:', edgeError);
@@ -223,7 +228,7 @@ export async function POST(req: Request) {
             success: true,
             summary: {
                 meetingTitle,
-                nodesCreated: insertedNodesCount,
+                nodesCreated: insertedNodes?.length || 0,
                 edgesCreated: insertedEdgesCount,
                 decisions: structuredData.decisions?.length || 0,
                 tasks: structuredData.tasks?.length || 0,
@@ -233,7 +238,7 @@ export async function POST(req: Request) {
         });
 
     } catch (error) {
-        console.error('Meeting Intelligence Error:', error);
+        console.error('Meeting Intelligence Critical Error:', error);
         return NextResponse.json({ success: false, error: 'Failed to process meeting intelligence' }, { status: 500 });
     }
 }
