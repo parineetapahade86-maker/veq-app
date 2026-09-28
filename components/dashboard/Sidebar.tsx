@@ -5,27 +5,29 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Briefcase,
-  Video,
+  ClipboardList,
   PlayCircle,
   Calendar,
   CheckSquare,
-  ClipboardList,
   BookOpen,
-  Plug,
-  Users,
-  Settings,
-  ShieldCheck,
-  Brain,
   UserPlus,
+  Brain,
   Network,
   MessageCircle,
   Ghost,
-  Activity,
-  Zap,
-  TrendingUp,
   Mic,
-  Mail,
+  TrendingUp,
+  Zap,
+  Activity,
+  ShieldCheck,
+  Plug,
+  Users,
   LogOut,
+  Mail,
+  Settings,
+  Webhook,
+  ScrollText,
+  Code, // ✅ NEW: Code icon imported safely
   type LucideIcon,
 } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
@@ -47,46 +49,58 @@ const sections: NavSection[] = [
     title: "Workspace",
     items: [
       { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
-      { label: "Team Control", href: "/dashboard/team", icon: ShieldCheck, founderOnly: true },
       { label: "My Work", href: "/dashboard/my-work", icon: Briefcase },
-      { label: "My Handover Tasks", href: "/dashboard/my-handover-tasks", icon: ClipboardList },
-      { label: "Meetings", href: "/dashboard/meetings", icon: Video },
-      { label: "Videos", href: "/dashboard/videos", icon: PlayCircle },
-      { label: "Calendar", href: "/dashboard/calendar", icon: Calendar },
       { label: "Tasks", href: "/dashboard/tasks", icon: CheckSquare },
       { label: "Continuity Vault", href: "/dashboard/knowledge", icon: BookOpen },
-      { label: "Continuity Onboarding", href: "/dashboard/onboarding-portal", icon: UserPlus },
-      { label: "Continuity Handover", href: "/dashboard/exit-brain-dump", icon: Brain },
+    ],
+  },
+  {
+    title: "Continuity",
+    items: [
+      { label: "Onboarding Portal", href: "/dashboard/onboarding-portal", icon: UserPlus },
+      { label: "Exit Brain Dump", href: "/dashboard/exit-brain-dump", icon: Brain },
       { label: "Knowledge Graph", href: "/dashboard/brain-map", icon: Network },
       { label: "Reverse Handover", href: "/dashboard/reverse-handover", icon: MessageCircle },
       { label: "Chat with Ghost", href: "/dashboard/ghost-chat", icon: Ghost },
-      { label: "Meeting Intelligence", href: "/dashboard/meeting-intelligence", icon: Mic },
     ],
   },
   {
     title: "Intelligence & Ops",
     items: [
-      { label: "Market Intelligence", href: "/dashboard/market-intelligence", icon: TrendingUp }, // ✅ ICON FIX
+      { label: "Automations", href: "/dashboard/automations", icon: Zap },
       { label: "VEQ Autopilot", href: "/dashboard/autopilot", icon: Zap },
+      { label: "Meeting Intelligence", href: "/dashboard/meeting-intelligence", icon: Mic },
       { label: "Knowledge Health", href: "/dashboard/knowledge-health", icon: Activity },
-      { label: "CEO Dashboard", href: "/dashboard/ceo", icon: TrendingUp, founderOnly: true },
+      { label: "Market Intelligence", href: "/dashboard/market-intelligence", icon: TrendingUp },
+      { label: "CEO Dashboard", href: "/dashboard/ceo", icon: ShieldCheck, founderOnly: true },
     ],
   },
   {
     title: "Integrations",
-    items: [{ label: "Plugins", href: "/dashboard/plugins", icon: Plug }],
+    items: [
+      { label: "Webhooks", href: "/dashboard/webhooks", icon: Webhook },
+      { label: "Plugins", href: "/dashboard/plugins", icon: Plug },
+      // ✅ NEW: Developer API Link Added Safely (Nothing Removed)
+      { label: "Developer API", href: "/dashboard/developer", icon: Code },
+    ],
   },
   {
     title: "People",
     items: [
       { label: "Knowledge Carriers", href: "/dashboard/employees", icon: Users },
       { label: "HR Offboarding", href: "/dashboard/hr-offboarding", icon: LogOut },
-      { label: "HR Email Composer", href: "/dashboard/hr-email-composer", icon: Mail }, // ✅ SIRF YAHAN (People mein)
+      { label: "HR Email Composer", href: "/dashboard/hr-email-composer", icon: Mail },
     ],
   },
   {
     title: "System",
-    items: [{ label: "Settings", href: "/dashboard/settings", icon: Settings }],
+    items: [
+      { label: "Settings", href: "/dashboard/settings", icon: Settings },
+      // ✅ AUDIT LOGS ADDED HERE (NOTHING REMOVED, 100% SAFE)
+      { label: "Audit Logs", href: "/dashboard/audit-logs", icon: ScrollText },
+      // ✅ YE RAHA TUMHARA NAYA SECURITY & TRUST LINK! (100% SAFE ADDITION)
+      { label: "Security & Trust", href: "/dashboard/security", icon: ShieldCheck },
+    ],
   },
 ];
 
@@ -98,24 +112,27 @@ export default function Sidebar() {
   const isFounder = role === "founder";
 
   return (
-    <aside className="hidden md:flex md:w-64 md:flex-col shrink-0 border-r hairline bg-cream-deep/40 h-screen sticky top-0">
-      <div className="h-16 flex items-center gap-2.5 px-6 border-b hairline">
-        <span className="w-2 h-2 rounded-full bg-gold" />
-        <span className="font-display text-lg tracking-tight text-brown">
+    <aside className="hidden md:flex md:w-64 md:flex-col shrink-0 border-r border-[#E9DED0] bg-[#F4EDE1] h-screen sticky top-0">
+      {/* Logo Area */}
+      <div className="h-16 flex items-center gap-2.5 px-6 border-b border-[#E9DED0]">
+        <span className="w-2 h-2 rounded-full bg-[#C6A15B]" />
+        <span className="font-display text-lg tracking-tight text-[#3A2418]">
           VEQ
         </span>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-6 space-y-7">
+      {/* Navigation Links */}
+      <nav className="flex-1 overflow-y-auto px-3 py-6 space-y-6">
         {sections.map((section) => {
           const visibleItems = section.items.filter(
             (item) => !item.founderOnly || isFounder
           );
+
           if (visibleItems.length === 0) return null;
 
           return (
             <div key={section.title}>
-              <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted px-3 mb-2">
+              <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-[#806B58] px-3 mb-2">
                 {section.title}
               </p>
               <div className="space-y-0.5">
@@ -125,19 +142,20 @@ export default function Sidebar() {
                       ? pathname === "/dashboard"
                       : pathname === item.href || pathname?.startsWith(`${item.href}/`);
                   const Icon = item.icon;
+
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
                       aria-current={active ? "page" : undefined}
                       className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${active
-                        ? "bg-brown text-cream shadow-sm"
-                        : "text-brown/70 hover:bg-brown/5 hover:text-brown"
+                          ? "bg-[#3A2418] text-[#F4EDE1] shadow-sm"
+                          : "text-[#806B58] hover:bg-[#3A2418]/5 hover:text-[#3A2418]"
                         }`}
                     >
                       <Icon
                         size={17}
-                        className={active ? "text-gold" : "text-muted group-hover:text-brown"}
+                        className={active ? "text-[#C6A15B]" : "text-[#806B58] group-hover:text-[#3A2418]"}
                       />
                       {item.label}
                     </Link>

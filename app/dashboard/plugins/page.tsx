@@ -13,10 +13,14 @@ import {
   Plus,
   X,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Code,
+  Globe,
+  ExternalLink
 } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
 import { createClient } from "@/utils/supabase/client"
+import Link from "next/link"
 
 type Plugin = {
   id: string
@@ -105,7 +109,6 @@ export default function PluginsPage() {
 
   const fetchConnections = async () => {
     try {
-      // 1. Get Company ID using clerk_id
       const { data: profile } = await supabase
         .from("user_profiles")
         .select("company_id")
@@ -115,7 +118,6 @@ export default function PluginsPage() {
       if (!profile?.company_id) return
       setCompanyId(profile.company_id)
 
-      // 2. Fetch enabled integrations for this company
       const { data } = await supabase
         .from("company_integrations")
         .select("integration_type")
@@ -136,7 +138,6 @@ export default function PluginsPage() {
   const handleConnect = async () => {
     if (!companyId || !selectedPlugin) return
 
-    // For webhook type, ensure URL is provided
     if (selectedPlugin.connectionType === "webhook" && !webhookUrl.trim()) {
       alert("Please enter a valid Webhook URL.")
       return
@@ -155,7 +156,6 @@ export default function PluginsPage() {
 
       if (error) throw error
 
-      // Update local state to reflect the new connection immediately
       setConnectedApps(prev => new Set(prev).add(selectedPlugin.id))
       setSelectedPlugin(null)
       setWebhookUrl("")
@@ -186,10 +186,10 @@ export default function PluginsPage() {
         Integrations · Plugins
       </p>
       <h1 className="font-display text-4xl md:text-5xl text-brown italic mb-4">
-        Plugins
+        Plugin Marketplace
       </h1>
       <p className="text-muted max-w-xl mb-12">
-        Connect the tools your team already uses so VEQ can capture context directly from them.
+        Connect the tools your team already uses so VEQ can capture context directly from them, or build your own custom integrations.
       </p>
 
       {/* INSTALLED SECTION */}
@@ -251,13 +251,64 @@ export default function PluginsPage() {
         </div>
       )}
 
+      {/* ✅ NEW: DEVELOPER API & CUSTOM INTEGRATIONS SECTION (THE MOAT) */}
+      <div className="mb-12">
+        <h2 className="font-display text-2xl text-brown italic mb-6">Developer API & Custom</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Developer API Card */}
+          <div className="rounded-2xl border hairline bg-cream-deep/40 p-6 hover:border-gold/50 transition-all group">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-gold/20 border border-gold/30 flex items-center justify-center shrink-0">
+                  <Code className="w-6 h-6 text-brown" />
+                </div>
+                <div>
+                  <h3 className="font-display text-lg text-brown italic">VEQ Public API</h3>
+                  <p className="text-sm text-muted mt-1">Push Knowledge Handover Scores directly to your HRIS (BambooHR, Rippling) or build custom apps.</p>
+                </div>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/developer"
+              className="flex items-center gap-2 text-sm font-mono text-brown font-semibold mt-4 pt-4 border-t hairline group-hover:text-gold transition-colors"
+            >
+              Manage API Keys <ExternalLink className="w-4 h-4" />
+            </Link>
+          </div>
+
+          {/* Custom Webhook Card */}
+          <div className="rounded-2xl border hairline bg-cream-deep/40 p-6 hover:border-gold/50 transition-all group">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-gold/20 border border-gold/30 flex items-center justify-center shrink-0">
+                  <Globe className="w-6 h-6 text-brown" />
+                </div>
+                <div>
+                  <h3 className="font-display text-lg text-brown italic">Custom Webhooks</h3>
+                  <p className="text-sm text-muted mt-1">Trigger external actions when knowledge risks are detected or tasks are completed.</p>
+                </div>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/webhooks"
+              className="flex items-center gap-2 text-sm font-mono text-brown font-semibold mt-4 pt-4 border-t hairline group-hover:text-gold transition-colors"
+            >
+              Configure Webhooks <ExternalLink className="w-4 h-4" />
+            </Link>
+          </div>
+
+        </div>
+      </div>
+
+      {/* COMING SOON FOOTER */}
       <div className="rounded-2xl border hairline border-dashed border-cream-deep p-8 text-center">
         <p className="text-sm text-muted font-mono">
           GitHub, Microsoft Teams, Dropbox, and more custom integrations coming soon...
         </p>
       </div>
 
-      {/* ✅ UPDATED CONNECTION MODAL WITH ACTUAL OAUTH REDIRECT ✅ */}
+      {/* CONNECTION MODAL (YOUR EXISTING PERFECT LOGIC) */}
       {selectedPlugin && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-6">
           <div className="bg-[#F4EDE1] rounded-2xl border hairline p-8 max-w-md w-full shadow-2xl">
@@ -313,7 +364,6 @@ export default function PluginsPage() {
                 </div>
               </div>
             ) : (
-              // ✅ YE HAI ACTUAL OAUTH FIX! Ab ye seedha API route par le jayega
               <div className="text-center py-6">
                 <AlertCircle className="w-12 h-12 text-gold mx-auto mb-4" />
                 <p className="text-muted mb-6 leading-relaxed">
@@ -343,7 +393,7 @@ export default function PluginsPage() {
   )
 }
 
-// Reusable Plugin Card Component
+// Reusable Plugin Card Component (UNCHANGED)
 function PluginCard({ plugin, onConnect }: { plugin: Plugin; onConnect: () => void }) {
   const Icon = plugin.icon
   return (

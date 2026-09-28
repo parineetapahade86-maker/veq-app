@@ -16,34 +16,49 @@ export async function POST(req: Request) {
             process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
 
-        // 3. Parse request body
-        const { companyId, recentActivities } = await req.json();
-        const userId = req.headers.get('x-user-id') || 'unknown-user';
+        // 3. Parse request body safely
+        const body = await req.json();
+        const { companyId, recentActivities } = body;
+        const userId = req.headers.get('x-user-id') || 'system-agent';
 
-        // 4. Define the AI Prompt
+        // 4. ULTIMATE ENTERPRISE AI PROMPT
         const prompt = `
-      You are VEQ, an enterprise-grade AI Knowledge Continuity Agent. 
-      Your goal is to analyze company activities and prevent knowledge loss.
+      You are VEQ, an elite Enterprise AI Knowledge Continuity Agent. 
+      Your mission is to analyze company activities and prevent critical knowledge loss.
 
       STRICT RULES:
-      1. Always respond in clear, professional Business English.
-      2. Be concise, actionable, and urgent where necessary.
-      3. Return ONLY a valid JSON array of objects.
-      4. Each object must have exactly these keys: "agent_type", "title", "description", "priority".
+      1. Respond ONLY with a valid JSON array. Do NOT include markdown formatting (like \`\`\`json), conversational text, or explanations.
+      2. Use clear, professional, and actionable Business English.
+      3. Focus on real risks: missing documentation after code merges, upcoming employee offboarding, lack of meeting notes, or outdated processes.
       
-      Analyze the following recent company activities: ${JSON.stringify(recentActivities || [])}
+      Allowed "agent_type" values: "gap_detector", "proactive_helper", "smart_reminder", "categorizer".
+      Allowed "priority" values: "high", "medium", "low".
+
+      Analyze these recent company activities: ${JSON.stringify(recentActivities || "No recent activities provided. Suggest general knowledge base improvements.")}
+      
+      Return a JSON array of objects with exactly these keys: "agent_type", "title", "description", "priority".
     `;
 
         // 5. Call the AI Model
         const completion = await openai.chat.completions.create({
-            model: "openai/gpt-4o-mini", // Reliable and cost-effective via OpenRouter
+            model: "openai/gpt-4o-mini",
             messages: [{ role: "system", content: prompt }],
             response_format: { type: "json_object" },
+            temperature: 0.3, // Low temperature for consistent, factual JSON output
         });
 
-        // 6. Safely parse the AI response
-        const content = completion.choices[0]?.message?.content || '{"suggestions": []}';
-        const parsedData = JSON.parse(content);
+        // 6. ULTRA-SAFE JSON PARSING (Handles markdown code blocks if AI sends them)
+        let rawContent = completion.choices[0]?.message?.content || '{"suggestions": []}';
+        const cleanContent = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        let parsedData;
+        try {
+            parsedData = JSON.parse(cleanContent);
+        } catch (parseError) {
+            console.error('JSON Parse Error:', parseError, 'Raw Content:', rawContent);
+            parsedData = { suggestions: [] }; // Fallback to empty array if parsing fails
+        }
+
         const suggestions = parsedData.suggestions || [];
 
         // 7. Save valid suggestions to Supabase
@@ -53,8 +68,8 @@ export async function POST(req: Request) {
                     user_id: userId,
                     company_id: companyId || 'default-company',
                     agent_type: s.agent_type || 'proactive_helper',
-                    title: s.title || 'AI Insight',
-                    description: s.description || 'No description provided.',
+                    title: s.title || 'AI Insight Detected',
+                    description: s.description || 'Action required to maintain knowledge continuity.',
                     priority: s.priority || 'medium',
                     status: 'pending'
                 }))
@@ -66,15 +81,47 @@ export async function POST(req: Request) {
             }
         }
 
-        // 8. Return success response
+        // 8. FIRE WEBHOOKS (The Automation Magic!)
+        if (suggestions && suggestions.length > 0) {
+            // Fetch all active webhooks for this company
+            const { data: activeWebhooks } = await supabase
+                .from('webhooks')
+                .select('url')
+                .eq('is_active', true);
+
+            if (activeWebhooks && activeWebhooks.length > 0) {
+                const payload = {
+                    event: 'knowledge_gap_detected',
+                    timestamp: new Date().toISOString(),
+                    company_id: companyId,
+                    total_alerts: suggestions.length,
+                    data: suggestions
+                };
+
+                // Send POST request to all webhooks concurrently
+                const webhookPromises = activeWebhooks.map((wh) =>
+                    fetch(wh.url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    }).catch((err) => console.error(`Webhook failed for ${wh.url}:`, err))
+                );
+
+                // Wait for all webhooks to finish (or fail) without blocking the main response
+                await Promise.allSettled(webhookPromises);
+                console.log(`Fired ${activeWebhooks.length} webhooks successfully.`);
+            }
+        }
+
+        // 9. Return success response
         return NextResponse.json({
             success: true,
             count: suggestions.length,
-            message: 'AI scan completed and suggestions saved successfully.'
+            message: `AI scan completed. ${suggestions.length} actionable insights generated and webhooks fired.`
         });
 
     } catch (error) {
-        console.error('AI Agent Scan Error:', error);
+        console.error('AI Agent Scan Critical Error:', error);
         return NextResponse.json(
             { error: 'Failed to run AI scan. Please try again later.' },
             { status: 500 }

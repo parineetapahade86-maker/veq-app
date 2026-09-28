@@ -3,9 +3,10 @@ import { currentUser } from "@clerk/nextjs/server";
 import { getSupabase } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, Activity } from "lucide-react";
+import { ArrowRight, Activity, AlertTriangle, Zap } from "lucide-react";
 import AIBuddy from "@/components/AIBuddy";
 import ActivityFeed from "@/components/ActivityFeed";
+import AgentInbox from "@/components/AgentInbox"; // ✅ NEW: Agent Inbox Component Imported
 
 export const dynamic = "force-dynamic";
 
@@ -26,14 +27,16 @@ export default async function DashboardOverviewPage() {
   let knowledgeItems = 0;
   let hasCompletedOnboarding = false;
   let companyName = "Your Company";
-  let companyId = null;
+  let companyId: string | null = null;
+
+  // NEW: State to hold predictive risk alerts
+  let riskAlerts: any[] = [];
 
   if (supabase) {
-    // ✅ FIXED 1: Use "id" instead of "clerk_id" to match onboarding insert
-    // ✅ FIXED 2: Use .maybeSingle() so it returns null instead of throwing an error if row doesn't exist
+    // Fetch user profile
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
-      .select("company_id, has_completed_onboarding, company_name")
+      .select("company_id, has_completed_onboarding")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -41,7 +44,7 @@ export default async function DashboardOverviewPage() {
       console.error("Profile fetch error:", profileError);
     }
 
-    // ✅ FIXED 3: If no profile exists, gracefully redirect to onboarding!
+    // If no profile exists, redirect to onboarding
     if (!profile) {
       console.log("No profile found for user, redirecting to onboarding...");
       redirect("/onboarding");
@@ -49,40 +52,59 @@ export default async function DashboardOverviewPage() {
 
     companyId = profile.company_id;
     hasCompletedOnboarding = profile.has_completed_onboarding ?? false;
-    companyName = profile.company_name || "Your Company";
 
-    // Fetch counts (Only if companyId exists)
+    // Fetch counts, company name, and risk alerts only if companyId exists
     if (companyId) {
-      // Note: Ensure these table names ("tasks", "employee_knowledge") match your actual Supabase tables. 
-      // If we renamed them to "veq_agent_tasks" and "company_memories" earlier, update them here!
-      const [tasksResult, meetingsResult, docsResult] = await Promise.all([
-        supabase
-          .from("veq_agent_tasks") // ✅ Updated to match our previous build (change back to "tasks" if you kept that name)
-          .select("*", { count: "exact", head: true })
-          .eq("requested_by", user.id) // ✅ Updated to match our payload structure
-          .eq("status", "pending_approval"),
+      const { data: companyData } = await supabase
+        .from("companies")
+        .select("name")
+        .eq("id", companyId)
+        .single();
 
+      if (companyData?.name) {
+        companyName = companyData.name;
+      }
+
+      // Fetch dashboard metrics in parallel
+      const [tasksResult, meetingsResult, docsResult, alertsResult] = await Promise.all([
         supabase
-          .from("company_memories") // ✅ Updated to match our previous build
+          .from("tasks")
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId)
-          .eq("memory_type", "decision"),
+          .eq("status", "pending"),
 
         supabase
-          .from("company_memories") // ✅ Updated to match our previous build
+          .from("meetings")
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId),
+
+        supabase
+          .from("knowledge_items")
+          .select("*", { count: "exact", head: true })
+          .eq("company_id", companyId),
+
+        // NEW: Fetch top Critical/Medium risk alerts for this company
+        supabase
+          .from("knowledge_risk_alerts")
+          .select("user_name, risk_level, risk_score, reason")
+          .eq("company_id", companyId)
+          .in("risk_level", ["Critical", "Medium"])
+          .order("risk_score", { ascending: false })
+          .limit(1) // Show only the highest risk to keep dashboard clean
       ]);
 
       activeTasks = tasksResult.count ?? 0;
       meetingsThisWeek = meetingsResult.count ?? 0;
       knowledgeItems = docsResult.count ?? 0;
+      riskAlerts = alertsResult.data || [];
 
-      console.log("📊 Dashboard Data:", {
+      console.log("📊 Dashboard Data Live:", {
         activeTasks,
         meetingsThisWeek,
         knowledgeItems,
-        companyId
+        companyId,
+        companyName,
+        hasRisk: riskAlerts.length > 0
       });
     }
   }
@@ -101,13 +123,53 @@ export default async function DashboardOverviewPage() {
         Your real-time workspace summary. Here is what you have been working on at {companyName}.
       </p>
 
+      {/* ✅ NEW: AI PREDICTIVE RISK ALERT (With Action Button) */}
+      {riskAlerts.length > 0 && (
+        <div className="mb-8 p-6 rounded-2xl border-2 border-red-200 bg-red-50/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-red-100 rounded-full shrink-0">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <div>
+              <h3 className="font-display text-xl text-brown italic mb-1">
+                Predictive Knowledge Risk Detected
+              </h3>
+              <p className="text-sm text-muted max-w-lg">
+                VEQ AI identified that <span className="font-semibold text-brown">{riskAlerts[0].user_name}</span> holds critical knowledge with dropping activity.
+                <span className="block mt-1 text-red-600 font-medium">Action Recommended: Initiate knowledge capture.</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+            {/* Button 1: View Details */}
+            <Link
+              href="/dashboard/knowledge-health"
+              className="px-5 py-2.5 bg-brown text-cream-deep rounded-xl hover:bg-brown/90 transition-colors flex items-center justify-center gap-2 font-mono text-sm font-semibold shadow-sm"
+            >
+              View Risk Radar
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+
+            {/* Button 2: THE MAGIC SOLUTION BUTTON */}
+            <Link
+              href={`/dashboard/exit-brain-dump?trigger=risk&user=${riskAlerts[0].user_name}`}
+              className="px-5 py-2.5 border-2 border-brown text-brown bg-white rounded-xl hover:bg-brown/5 transition-colors flex items-center justify-center gap-2 font-mono text-sm font-semibold"
+            >
+              Auto-Generate Handover
+              <Zap className="w-4 h-4 text-brown" />
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* GETTING STARTED CHECKLIST */}
       {!hasCompletedOnboarding && (
         <div className="mb-12 p-6 md:p-8 rounded-2xl border-2 border-dashed border-gold/40 bg-gold/5">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div>
               <h2 className="font-display text-2xl text-brown italic mb-2">
-                👋 Let's get your workspace ready!
+                Let's get your workspace ready!
               </h2>
               <p className="text-muted font-mono text-sm">
                 Complete these quick steps to unlock the full power of VEQ.
@@ -124,19 +186,27 @@ export default async function DashboardOverviewPage() {
 
           <div className="mt-6 grid sm:grid-cols-3 gap-4">
             <div className="flex items-center gap-3 p-4 bg-cream rounded-xl border hairline">
-              <div className="w-6 h-6 rounded-full border-2 border-muted flex items-center justify-center text-xs font-bold text-muted">1</div>
+              <div className="w-6 h-6 rounded-full border-2 border-muted flex items-center justify-center text-xs font-bold text-muted">
+                1
+              </div>
               <span className="text-sm text-brown font-medium">Setup Company Profile</span>
             </div>
             <div className="flex items-center gap-3 p-4 bg-cream rounded-xl border hairline opacity-60">
-              <div className="w-6 h-6 rounded-full border-2 border-muted flex items-center justify-center text-xs font-bold text-muted">2</div>
+              <div className="w-6 h-6 rounded-full border-2 border-muted flex items-center justify-center text-xs font-bold text-muted">
+                2
+              </div>
               <span className="text-sm text-brown font-medium">Invite Team Members</span>
             </div>
             <div className="flex items-center gap-3 p-4 bg-cream rounded-xl border hairline opacity-60">
-              <div className="w-6 h-6 rounded-full border-2 border-muted flex items-center justify-center text-xs font-bold text-muted">3</div>
+              <div className="w-6 h-6 rounded-full border-2 border-muted flex items-center justify-center text-xs font-bold text-muted">
+                3
+              </div>
               <span className="text-sm text-brown font-medium">Create First Exit Brain Dump</span>
             </div>
             <div className="flex items-center gap-3 p-4 bg-cream rounded-xl border hairline opacity-60">
-              <div className="w-6 h-6 rounded-full border-2 border-muted flex items-center justify-center text-xs font-bold text-muted">4</div>
+              <div className="w-6 h-6 rounded-full border-2 border-muted flex items-center justify-center text-xs font-bold text-muted">
+                4
+              </div>
               <span className="text-sm text-brown font-medium">Check Knowledge Risk</span>
             </div>
           </div>
@@ -146,26 +216,33 @@ export default async function DashboardOverviewPage() {
       {/* METRICS GRID */}
       <div className="grid sm:grid-cols-3 gap-4 mb-12">
         <div className="rounded-2xl border hairline bg-cream-deep/40 p-6 hover:border-gold/50 transition-colors">
-          <p className="font-display text-3xl text-brown italic">
-            {activeTasks}
+          <p className="font-display text-3xl text-brown italic">{activeTasks}</p>
+          <p className="text-xs text-muted mt-1 font-mono uppercase tracking-wide">
+            Active tasks
           </p>
-          <p className="text-xs text-muted mt-1 font-mono uppercase tracking-wide">Active tasks</p>
         </div>
 
         <div className="rounded-2xl border hairline bg-cream-deep/40 p-6 hover:border-gold/50 transition-colors">
           <p className="font-display text-3xl text-brown italic">
             {meetingsThisWeek}
           </p>
-          <p className="text-xs text-muted mt-1 font-mono uppercase tracking-wide">Meetings logged</p>
+          <p className="text-xs text-muted mt-1 font-mono uppercase tracking-wide">
+            Meetings logged
+          </p>
         </div>
 
         <div className="rounded-2xl border hairline bg-cream-deep/40 p-6 hover:border-gold/50 transition-colors">
           <p className="font-display text-3xl text-brown italic">
             {knowledgeItems}
           </p>
-          <p className="text-xs text-muted mt-1 font-mono uppercase tracking-wide">Knowledge items</p>
+          <p className="text-xs text-muted mt-1 font-mono uppercase tracking-wide">
+            Knowledge items
+          </p>
         </div>
       </div>
+
+      {/* 🤖 AGENTIC AI: SELF-HEALING INBOX */}
+      <AgentInbox companyId={companyId} />
 
       {/* RECENT ACTIVITY FEED SECTION */}
       <div className="mb-12">
@@ -183,8 +260,12 @@ export default async function DashboardOverviewPage() {
       >
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-display text-xl text-brown italic mb-1">Discover the Power of VEQ</h3>
-            <p className="text-sm text-muted mb-3">Learn how our Knowledge Management System captures both Tacit and Explicit knowledge automatically.</p>
+            <h3 className="font-display text-xl text-brown italic mb-1">
+              Discover the Power of VEQ
+            </h3>
+            <p className="text-sm text-muted mb-3">
+              Learn how our Knowledge Management System captures both Tacit and Explicit knowledge automatically.
+            </p>
             <span className="text-xs font-mono text-gold font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">
               Read the Guide <ArrowRight className="w-3 h-3" />
             </span>
@@ -192,10 +273,10 @@ export default async function DashboardOverviewPage() {
           <div className="hidden md:block w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
             <ArrowRight className="w-6 h-6 text-gold" />
           </div>
-        </div>
+        </div>Ś
       </Link>
 
       <AIBuddy />
     </section>
   );
-}
+} 
