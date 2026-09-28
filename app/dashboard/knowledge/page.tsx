@@ -3,7 +3,10 @@
 import { useState, useEffect, useMemo } from "react"
 import { useUser } from "@clerk/nextjs"
 import { createClient } from "@supabase/supabase-js"
-import { BookOpen, Plus, Search, Trash2, Tag, X, Save, FileText, Upload, Loader2, AlertCircle, Filter, Calendar } from "lucide-react"
+// ✅ CHANGE 1: Share2 aur Check icons add kar diye
+import { BookOpen, Plus, Search, Trash2, Tag, X, Save, FileText, Upload, Loader2, AlertCircle, Filter, Calendar, Share2, Check } from "lucide-react"
+import { Skeleton } from "@/components/Skeleton"
+import { triggerVEQConfetti } from "@/lib/confetti"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,10 +37,13 @@ function KnowledgeCard({ item, onDelete }: { item: KnowledgeItem; onDelete: (id:
   const [loadingRelated, setLoadingRelated] = useState(false)
   const [showRelated, setShowRelated] = useState(false)
 
+  // ✅ CHANGE 2: Share ke liye nayi states add ki
+  const [isSharing, setIsSharing] = useState(false)
+  const [copied, setCopied] = useState(false)
+
   const displayContent = isExpanded ? item.content : item.content.substring(0, 500)
   const isLong = item.content.length > 500
 
-  // 🧠 Fetch related knowledge when card is expanded
   useEffect(() => {
     if (isExpanded && relatedItems.length === 0) {
       fetchRelatedKnowledge()
@@ -83,7 +89,6 @@ function KnowledgeCard({ item, onDelete }: { item: KnowledgeItem; onDelete: (id:
 
   return (
     <div className="rounded-2xl border border-[#E9DED0] bg-[#F4EDE1]/60 p-6 hover:border-[#C6A15B]/50 transition-all group shadow-sm">
-      {/* Header: type badge, date, and delete button */}
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center gap-3 flex-wrap">
           <span className={`px-3 py-1 rounded-full text-xs font-mono flex items-center gap-1 ${item.source_type === "document" ? "bg-[#3A2418]/10 text-[#3A2418]" : "bg-[#C6A15B]/20 text-[#3A2418]"}`}>
@@ -94,13 +99,48 @@ function KnowledgeCard({ item, onDelete }: { item: KnowledgeItem; onDelete: (id:
             {new Date(item.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
           </span>
         </div>
-        <button
-          onClick={() => onDelete(item.id)}
-          className="p-2 text-[#806B58] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-          title="Delete"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+
+        {/* ✅ CHANGE 3: Share aur Delete buttons ko ek saath group kar diya */}
+        <div className="flex items-center gap-2">
+          {/* SHARE BUTTON */}
+          <button
+            onClick={async () => {
+              setIsSharing(true)
+              try {
+                const res = await fetch('/api/share', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ knowledgeId: item.id })
+                })
+                const data = await res.json()
+                if (data.success) {
+                  await navigator.clipboard.writeText(data.shareUrl)
+                  setCopied(true)
+                  triggerVEQConfetti() // 🎉 VIRAL LOOP MAGIC!
+                  setTimeout(() => setCopied(false), 2000)
+                }
+              } catch (err) {
+                console.error('Share error:', err)
+              } finally {
+                setIsSharing(false)
+              }
+            }}
+            disabled={isSharing}
+            className="p-2 text-[#806B58] hover:text-[#C6A15B] hover:bg-[#C6A15B]/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 flex items-center gap-1"
+            title="Copy Share Link"
+          >
+            {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : copied ? <Check className="w-4 h-4 text-green-600" /> : <Share2 className="w-4 h-4" />}
+          </button>
+
+          {/* DELETE BUTTON (Existing) */}
+          <button
+            onClick={() => onDelete(item.id)}
+            className="p-2 text-[#806B58] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+            title="Delete"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <h3 className="font-display text-xl text-[#3A2418] italic mb-2">
@@ -121,7 +161,6 @@ function KnowledgeCard({ item, onDelete }: { item: KnowledgeItem; onDelete: (id:
         </button>
       )}
 
-      {/* 🧠 AI-EXTRACTED ENTITIES */}
       {item.entities && item.entities.length > 0 && (
         <div className="pt-4 border-t border-[#E9DED0]">
           <div className="flex flex-wrap gap-2">
@@ -137,7 +176,6 @@ function KnowledgeCard({ item, onDelete }: { item: KnowledgeItem; onDelete: (id:
         </div>
       )}
 
-      {/* 🔗 RELATED KNOWLEDGE SECTION (Shows only when expanded) */}
       {isExpanded && (
         <div className="mt-6 pt-6 border-t border-[#E9DED0]">
           <div className="flex items-center justify-between mb-4">
@@ -320,6 +358,9 @@ export default function KnowledgePage() {
         setTagInput("")
         setIsFormOpen(false)
         setMessage(`✅ Entry saved! AI extracted ${data.entitiesCount || 0} entities.`)
+
+        triggerVEQConfetti();
+
         fetchCompanyIdAndItems()
         setTimeout(() => setMessage(""), 3000)
       } else {
@@ -492,7 +533,12 @@ export default function KnowledgePage() {
           </div>
           <div className="flex justify-end gap-3">
             <button onClick={() => setIsFormOpen(false)} className="px-6 py-2 text-sm font-mono text-[#806B58] hover:text-[#3A2418]">Cancel</button>
-            <button onClick={handleSaveItem} disabled={isSaving} className="px-6 py-2 bg-[#C6A15B] text-white rounded-xl hover:bg-[#b08d4b] disabled:opacity-50 flex items-center gap-2 font-mono text-sm font-semibold">
+
+            <button
+              onClick={handleSaveItem}
+              disabled={isSaving}
+              className="px-6 py-2 bg-[#C6A15B] text-white rounded-xl hover:bg-[#b08d4b] disabled:opacity-50 flex items-center gap-2 font-mono text-sm font-semibold active:scale-95 transition-all duration-200"
+            >
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {isSaving ? "Saving..." : "Save entry"}
             </button>
           </div>
@@ -501,8 +547,21 @@ export default function KnowledgePage() {
 
       <div className="space-y-12">
         {loading ? (
-          <div className="flex items-center justify-center py-12 text-[#806B58]">
-            <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading your knowledge vault...
+          <div className="space-y-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="rounded-2xl border border-[#E9DED0] bg-[#F4EDE1]/60 p-6 space-y-4">
+                <div className="flex justify-between items-center">
+                  <Skeleton className="h-6 w-1/3" />
+                  <Skeleton className="h-4 w-16 rounded-full" />
+                </div>
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3" />
+                <div className="flex gap-2 pt-2">
+                  <Skeleton className="h-8 w-20 rounded-lg" />
+                  <Skeleton className="h-8 w-20 rounded-lg" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : Object.keys(groupedItems).length > 0 ? (
           Object.keys(groupedItems).sort((a, b) => Number(b) - Number(a)).map((year) => (
