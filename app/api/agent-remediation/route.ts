@@ -13,7 +13,6 @@ export async function GET() {
     const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', userId).single()
     if (!profile?.company_id) return NextResponse.json({ suggestions: [] })
 
-    // Fetch pending suggestions for this company
     const { data: suggestions, error } = await supabase
         .from('agent_suggestions')
         .select('*')
@@ -36,19 +35,42 @@ export async function POST(req: Request) {
     const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', userId).single()
     if (!profile?.company_id) return NextResponse.json({ error: 'Company not found' }, { status: 400 })
 
-    const { action } = await req.json() // action: 'approve' or 'dismiss', suggestionId
+    const body = await req.json()
+    const { action, suggestionId } = body
 
-    if (action === 'approve') {
-        // In a real app, this would convert the suggestion into a real Knowledge Item
-        // For MVP, we just mark it as approved and log it
-        await supabase.from('agent_suggestions').update({ status: 'approved' }).eq('id', req.json().suggestionId)
-        return NextResponse.json({ success: true, message: 'Knowledge item drafted successfully!' })
+    if (!suggestionId || typeof suggestionId !== 'string') {
+        return NextResponse.json({ error: 'suggestionId is required' }, { status: 400 })
     }
 
-    if (action === 'dismiss') {
-        await supabase.from('agent_suggestions').update({ status: 'dismissed' }).eq('id', req.json().suggestionId)
-        return NextResponse.json({ success: true, message: 'Suggestion dismissed.' })
+    if (action !== 'approve' && action !== 'dismiss') {
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+    const newStatus = action === 'approve' ? 'approved' : 'dismissed'
+
+    // 🔒 Scope the update to this company's own suggestions, restrict it to
+    // suggestions that are still pending (so an already-handled one can't be
+    // flipped again), and use .select() so we know if a row really changed
+    const { data, error } = await supabase
+        .from('agent_suggestions')
+        .update({ status: newStatus })
+        .eq('id', suggestionId)
+        .eq('company_id', profile.company_id)
+        .eq('status', 'pending')
+        .select('id')
+
+    if (error) {
+        console.error('Suggestion update error:', error)
+        return NextResponse.json({ error: 'Failed to update suggestion' }, { status: 500 })
+    }
+
+    if (!data || data.length === 0) {
+        return NextResponse.json({ error: 'Suggestion not found or already handled' }, { status: 404 })
+    }
+
+    return NextResponse.json({
+        success: true,
+        // Honest message: this only records the decision. It does not create a knowledge item.
+        message: action === 'approve' ? 'Suggestion approved.' : 'Suggestion dismissed.',
+    })
 }
