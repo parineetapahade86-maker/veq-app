@@ -87,3 +87,40 @@ body {
     display: none !important;
   }
 }
+
+/* ==========================================
+   VEQ PREMIUM POLISH (NEW ADDITIONS)
+   ========================================== */
+
+/* 1. Custom VEQ Branded Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--cream);
+  /* VEQ Cream Background */
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gold);
+  /* VEQ Gold */
+  border-radius: 10px;
+  border: 2px solid var(--cream);
+  /* Padding effect */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--brown);
+  /* VEQ Brown on hover */
+}
+
+/* 2. Smooth VEQ Focus Rings for Accessibility & Premium Feel */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--gold);
+  /* Gold focus ring */
+  border-radius: 4px;
+  transition: box-shadow 0.2s ease-in-out;
+}

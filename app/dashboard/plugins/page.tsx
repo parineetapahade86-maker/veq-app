@@ -257,7 +257,7 @@ export default function PluginsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
           {/* Developer API Card */}
-          <div className="rounded-2xl border hairline bg-cream-deep/40 p-6 hover:border-gold/50 transition-all group">
+          <div className="rounded-2xl border hairline bg-cream-deep/40 p-6 hover:border-gold/50 transition-all duration-300 ease-in-out hover:-translate-y-1 hover:shadow-xl group">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gold/20 border border-gold/30 flex items-center justify-center shrink-0">

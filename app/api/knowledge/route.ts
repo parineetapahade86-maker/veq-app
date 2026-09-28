@@ -1,3 +1,5 @@
+// app/api/knowledge/route.ts
+import { triggerEventNotification } from '@/lib/notifications';
 import { NextResponse } from 'next/server'
 import { currentUser } from '@clerk/nextjs/server'
 import { getSupabase } from '@/lib/supabase/server'
@@ -70,5 +72,39 @@ export async function POST(request: Request) {
         .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // ✅ ACTIVE ASSISTANT NOTIFICATION: Trigger Slack & Email alerts
+    try {
+        // Fetch founder's email from the same company
+        const { data: founderProfile } = await supabase
+            .from('user_profiles')
+            .select('email')
+            .eq('company_id', profile.company_id)
+            .eq('role', 'founder')
+            .single()
+
+        // Fetch company Slack webhook (if exists)
+        const { data: companySettings } = await supabase
+            .from('company_settings')
+            .select('slack_webhook_url')
+            .eq('company_id', profile.company_id)
+            .single()
+
+        const founderEmail = founderProfile?.email || 'founder@veq.app'
+        const companySlackWebhook = companySettings?.slack_webhook_url || null
+
+        // Fire notification asynchronously (won't block the response)
+        triggerEventNotification(
+            profile.company_id,
+            'document_added',
+            `"${title || 'Untitled Document'}" was added by ${user.firstName || user.id}.`,
+            founderEmail,
+            companySlackWebhook
+        )
+    } catch (notifError) {
+        // Silently fail if notification fails - document was still saved successfully
+        console.error('Notification trigger failed:', notifError)
+    }
+
     return NextResponse.json({ success: true, data })
 }
