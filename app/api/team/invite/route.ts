@@ -53,7 +53,7 @@ export async function POST(req: Request) {
             'document_added', // Reusing this event type for network growth, or create a new one
             `New team member invitation sent to ${name} (${email}).`,
             profile.email,
-            null // No slack needed for this internal action
+            undefined // No slack needed for this internal action
         )
 
         return NextResponse.json({ success: true, member: data })

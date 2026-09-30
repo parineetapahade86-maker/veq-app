@@ -72,7 +72,7 @@ export async function triggerEventNotification(
     eventType: 'document_added' | 'employee_offboarded',
     details: string,
     founderEmail: string,
-    slackWebhookUrl?: string
+    slackWebhookUrl?: string | null
 ) {
     // Slack Message Format
     let slackMsg = "";
