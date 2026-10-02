@@ -3,6 +3,8 @@ import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import Footer from "@/components/Footer";
 import CookieBanner from "@/components/CookieBanner";
+// ✅ ADDITION 1: ThemeProvider Import
+import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -68,15 +70,20 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en">
+      {/* ✅ ADDITION 2: suppressHydrationWarning added for smooth Dark Mode */}
+      <html lang="en" suppressHydrationWarning>
+        {/* ✅ ADDITION 3: transition-colors duration-300 added for smooth theme switching */}
         <body
-          className={`${fraunces.variable} ${inter.variable} ${jetbrains.variable} antialiased flex min-h-screen flex-col`}
+          className={`${fraunces.variable} ${inter.variable} ${jetbrains.variable} antialiased flex min-h-screen flex-col transition-colors duration-300`}
         >
-          <main className="flex-1">
-            {children}
-          </main>
-          <Footer />
-          <CookieBanner />
+          {/* ✅ ADDITION 4: ThemeProvider wrapping the main content */}
+          <ThemeProvider>
+            <main className="flex-1">
+              {children}
+            </main>
+            <Footer />
+            <CookieBanner />
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>

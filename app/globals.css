@@ -37,6 +37,8 @@ body {
   background: var(--cream);
   color: var(--brown);
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+  /* ✅ ADDITION: Smooth transition for theme switching */
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 ::selection {
@@ -89,7 +91,7 @@ body {
 }
 
 /* ==========================================
-   VEQ PREMIUM POLISH (NEW ADDITIONS)
+   VEQ PREMIUM POLISH (EXISTING)
    ========================================== */
 
 /* 1. Custom VEQ Branded Scrollbar */
@@ -100,27 +102,59 @@ body {
 
 ::-webkit-scrollbar-track {
   background: var(--cream);
-  /* VEQ Cream Background */
 }
 
 ::-webkit-scrollbar-thumb {
   background: var(--gold);
-  /* VEQ Gold */
   border-radius: 10px;
   border: 2px solid var(--cream);
-  /* Padding effect */
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--brown);
-  /* VEQ Brown on hover */
 }
 
 /* 2. Smooth VEQ Focus Rings for Accessibility & Premium Feel */
 *:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--gold);
-  /* Gold focus ring */
   border-radius: 4px;
   transition: box-shadow 0.2s ease-in-out;
+}
+
+/* ==========================================
+   🌙 DARK MODE SUPPORT (NEW ADDITION)
+   ========================================== */
+
+/* Dark Mode Base Overrides */
+.dark body {
+  background: var(--black);
+  /* #0F0D0B */
+  color: var(--cream);
+  /* #F4EDE1 */
+}
+
+/* Dark Mode Hairline Adjustment (So borders are visible in dark mode) */
+.dark .hairline {
+  border-color: rgba(244, 237, 225, 0.14);
+}
+
+/* Custom Scrollbar Dark Mode Support */
+.dark ::-webkit-scrollbar-track {
+  background: var(--black);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--gold);
+  border: 2px solid var(--black);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--gold-deep);
+}
+
+/* Dark Mode Selection Override */
+.dark ::selection {
+  background: var(--gold-deep);
+  color: var(--black);
 }

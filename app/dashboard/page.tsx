@@ -6,7 +6,9 @@ import Link from "next/link";
 import { ArrowRight, Activity, AlertTriangle, Zap } from "lucide-react";
 import AIBuddy from "@/components/AIBuddy";
 import ActivityFeed from "@/components/ActivityFeed";
-import AgentInbox from "@/components/AgentInbox"; // ✅ NEW: Agent Inbox Component Imported
+import AgentInbox from "@/components/AgentInbox";
+// ✅ ADDITION 1: Import the new AI Gap Detector Widget
+import KnowledgeGapWidget from "@/components/KnowledgeGapWidget";
 
 export const dynamic = "force-dynamic";
 
@@ -24,13 +26,15 @@ export default async function DashboardOverviewPage() {
 
   let activeTasks = 0;
   let meetingsThisWeek = 0;
-  let knowledgeItems = 0;
+  let knowledgeItemsCount = 0; // Renamed slightly to avoid conflict with array
   let hasCompletedOnboarding = false;
   let companyName = "Your Company";
   let companyId: string | null = null;
 
   // NEW: State to hold predictive risk alerts
   let riskAlerts: any[] = [];
+  // ✅ ADDITION 2: State to hold actual knowledge items for the AI Scanner
+  let actualKnowledgeItems: any[] = [];
 
   if (supabase) {
     // Fetch user profile
@@ -66,7 +70,7 @@ export default async function DashboardOverviewPage() {
       }
 
       // Fetch dashboard metrics in parallel
-      const [tasksResult, meetingsResult, docsResult, alertsResult] = await Promise.all([
+      const [tasksResult, meetingsResult, docsResult, alertsResult, knowledgeItemsResult] = await Promise.all([
         supabase
           .from("tasks")
           .select("*", { count: "exact", head: true })
@@ -90,21 +94,29 @@ export default async function DashboardOverviewPage() {
           .eq("company_id", companyId)
           .in("risk_level", ["Critical", "Medium"])
           .order("risk_score", { ascending: false })
-          .limit(1) // Show only the highest risk to keep dashboard clean
+          .limit(1),
+
+        // ✅ ADDITION 3: Fetch actual items (source_reference, content, metadata) for the AI Gap Scanner
+        supabase
+          .from("knowledge_items")
+          .select("source_reference, content, metadata")
+          .eq("company_id", companyId)
       ]);
 
       activeTasks = tasksResult.count ?? 0;
       meetingsThisWeek = meetingsResult.count ?? 0;
-      knowledgeItems = docsResult.count ?? 0;
+      knowledgeItemsCount = docsResult.count ?? 0;
       riskAlerts = alertsResult.data || [];
+      actualKnowledgeItems = knowledgeItemsResult.data || []; // ✅ Store for the widget
 
       console.log("📊 Dashboard Data Live:", {
         activeTasks,
         meetingsThisWeek,
-        knowledgeItems,
+        knowledgeItemsCount,
         companyId,
         companyName,
-        hasRisk: riskAlerts.length > 0
+        hasRisk: riskAlerts.length > 0,
+        itemsScanned: actualKnowledgeItems.length
       });
     }
   }
@@ -123,7 +135,7 @@ export default async function DashboardOverviewPage() {
         Your real-time workspace summary. Here is what you have been working on at {companyName}.
       </p>
 
-      {/* ✅ NEW: AI PREDICTIVE RISK ALERT (With Action Button) */}
+      {/* ✅ EXISTING: AI PREDICTIVE RISK ALERT (With Action Button) */}
       {riskAlerts.length > 0 && (
         <div className="mb-8 p-6 rounded-2xl border-2 border-red-200 bg-red-50/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
@@ -142,7 +154,6 @@ export default async function DashboardOverviewPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 shrink-0">
-            {/* Button 1: View Details */}
             <Link
               href="/dashboard/knowledge-health"
               className="px-5 py-2.5 bg-brown text-cream-deep rounded-xl hover:bg-brown/90 transition-colors flex items-center justify-center gap-2 font-mono text-sm font-semibold shadow-sm"
@@ -151,7 +162,6 @@ export default async function DashboardOverviewPage() {
               <ArrowRight className="w-4 h-4" />
             </Link>
 
-            {/* Button 2: THE MAGIC SOLUTION BUTTON */}
             <Link
               href={`/dashboard/exit-brain-dump?trigger=risk&user=${riskAlerts[0].user_name}`}
               className="px-5 py-2.5 border-2 border-brown text-brown bg-white rounded-xl hover:bg-brown/5 transition-colors flex items-center justify-center gap-2 font-mono text-sm font-semibold"
@@ -214,7 +224,7 @@ export default async function DashboardOverviewPage() {
       )}
 
       {/* METRICS GRID */}
-      <div className="grid sm:grid-cols-3 gap-4 mb-12">
+      <div className="grid sm:grid-cols-3 gap-4 mb-8">
         <div className="rounded-2xl border hairline bg-cream-deep/40 p-6 hover:border-gold/50 transition-colors">
           <p className="font-display text-3xl text-brown italic">{activeTasks}</p>
           <p className="text-xs text-muted mt-1 font-mono uppercase tracking-wide">
@@ -233,12 +243,17 @@ export default async function DashboardOverviewPage() {
 
         <div className="rounded-2xl border hairline bg-cream-deep/40 p-6 hover:border-gold/50 transition-colors">
           <p className="font-display text-3xl text-brown italic">
-            {knowledgeItems}
+            {knowledgeItemsCount}
           </p>
           <p className="text-xs text-muted mt-1 font-mono uppercase tracking-wide">
             Knowledge items
           </p>
         </div>
+      </div>
+
+      {/* ✅ ADDITION 4: THE NEW AI KNOWLEDGE GAP DETECTOR WIDGET */}
+      <div className="mb-12">
+        <KnowledgeGapWidget knowledgeItems={actualKnowledgeItems} />
       </div>
 
       {/* 🤖 AGENTIC AI: SELF-HEALING INBOX */}
@@ -273,10 +288,10 @@ export default async function DashboardOverviewPage() {
           <div className="hidden md:block w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
             <ArrowRight className="w-6 h-6 text-gold" />
           </div>
-        </div>Ś
+        </div>
       </Link>
 
       <AIBuddy />
     </section>
   );
-} 
+}

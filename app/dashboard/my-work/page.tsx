@@ -1,9 +1,17 @@
+// app/dashboard/my-work/page.tsx
 "use client"
 
-import { useState } from "react"
-import { Briefcase, Plus, CheckCircle2, Circle, Clock, Trash2, Target } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useUser } from "@clerk/nextjs"
+import { createClient } from "@supabase/supabase-js"
+import { Briefcase, Plus, CheckCircle2, Circle, Clock, Trash2, Target, Loader2 } from "lucide-react"
 
-// Define the structure of a Work Item
+// ✅ 1. Setup Supabase Client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
 interface WorkItem {
   id: string
   title: string
@@ -13,48 +21,153 @@ interface WorkItem {
 }
 
 export default function MyWorkPage() {
-  // Start completely empty. No fake data!
+  const { user } = useUser()
+
+  // Start empty, but we will fetch from DB immediately
   const [items, setItems] = useState<WorkItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [companyId, setCompanyId] = useState<string | null>(null)
+
   const [newItemTitle, setNewItemTitle] = useState("")
   const [newItemCategory, setNewItemCategory] = useState<"Task" | "Meeting" | "Focus">("Focus")
+  const [isAdding, setIsAdding] = useState(false)
 
-  // Add a new item to the focus board
-  const handleAddItem = () => {
-    if (!newItemTitle.trim()) return
-
-    const item: WorkItem = {
-      id: Date.now().toString(),
-      title: newItemTitle,
-      category: newItemCategory,
-      status: "In Progress",
-      addedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  // ✅ 2. Fetch Data from Database on Mount
+  useEffect(() => {
+    if (user) {
+      fetchWorkData()
     }
+  }, [user])
 
-    setItems([...items, item])
-    setNewItemTitle("")
+  const fetchWorkData = async () => {
+    setLoading(true)
+    try {
+      // Get company_id first
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("company_id")
+        .eq("id", user?.id)
+        .single()
+
+      if (profile?.company_id) {
+        setCompanyId(profile.company_id)
+
+        // ✅ Fetch ONLY from 'tasks' table (Knowledge is 100% safe!)
+        const { data: tasks, error } = await supabase
+          .from("tasks")
+          .select("id, title, category, status, created_at")
+          .eq("employee_id", user?.id) // Matches the user who created it
+          .order("created_at", { ascending: false })
+
+        if (!error && tasks) {
+          const formattedItems: WorkItem[] = tasks.map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            category: t.category || "Focus",
+            status: t.status === "Completed" ? "Completed" : "In Progress",
+            addedAt: new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }))
+          setItems(formattedItems)
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching work data:", err)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Mark an item as completed
-  const toggleStatus = (id: string) => {
+  // ✅ 3. Add Item to Database (Persists forever!)
+  const handleAddItem = async () => {
+    if (!newItemTitle.trim() || !companyId || !user) return
+
+    setIsAdding(true)
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert({
+          title: newItemTitle,
+          category: newItemCategory,
+          status: "In Progress",
+          employee_id: user.id,
+          company_id: companyId
+        })
+        .select()
+        .single()
+
+      if (!error && data) {
+        const newItem: WorkItem = {
+          id: data.id,
+          title: data.title,
+          category: data.category,
+          status: "In Progress",
+          addedAt: new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+        setItems([newItem, ...items]) // Add to top of list
+        setNewItemTitle("")
+      } else {
+        console.error("Error adding task:", error)
+        alert("Failed to save work item. Please try again.")
+      }
+    } catch (err) {
+      console.error("Error adding task:", err)
+    } finally {
+      setIsAdding(false)
+    }
+  }
+
+  // ✅ 4. Toggle Status in Database
+  const toggleStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === "In Progress" ? "Completed" : "In Progress"
+
+    // Optimistic UI update (feels instant!)
     setItems(items.map(item =>
-      item.id === id
-        ? { ...item, status: item.status === "In Progress" ? "Completed" : "In Progress" }
-        : item
+      item.id === id ? { ...item, status: newStatus as "In Progress" | "Completed" } : item
     ))
+
+    // Database update
+    const { error } = await supabase
+      .from("tasks")
+      .update({ status: newStatus })
+      .eq("id", id)
+
+    if (error) {
+      console.error("Error updating task:", error)
+      // Revert on error
+      setItems(items.map(item =>
+        item.id === id ? { ...item, status: currentStatus as "In Progress" | "Completed" } : item
+      ))
+      alert("Failed to update status.")
+    }
   }
 
-  // Delete an item
-  const deleteItem = (id: string) => {
+  // ✅ 5. Delete Item from Database (ONLY 'tasks' table, Knowledge is SAFE!)
+  const deleteItem = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this work item?")) return
+
+    // Optimistic UI update
+    const originalItems = [...items]
     setItems(items.filter(item => item.id !== id))
+
+    // Database delete
+    const { error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", id)
+
+    if (error) {
+      console.error("Error deleting task:", error)
+      // Revert on error
+      setItems(originalItems)
+      alert("Failed to delete item.")
+    }
   }
 
-  // Filter items
   const activeItems = items.filter(item => item.status === "In Progress")
   const completedItems = items.filter(item => item.status === "Completed")
 
   return (
     <section className="max-w-4xl mx-auto px-6 py-16 md:py-24">
-      {/* Header */}
       <p className="font-mono text-xs tracking-[0.2em] uppercase text-muted mb-4">
         Workspace · My Work
       </p>
@@ -75,11 +188,13 @@ export default function MyWorkPage() {
           onKeyDown={(e) => e.key === "Enter" && handleAddItem()}
           placeholder="Add a priority or task to your focus board..."
           className="flex-1 bg-transparent border-none focus:outline-none text-brown placeholder:text-muted py-3"
+          disabled={isAdding || loading}
         />
         <select
           value={newItemCategory}
           onChange={(e) => setNewItemCategory(e.target.value as any)}
-          className="bg-white/50 border hairline rounded-xl px-3 py-2 text-sm text-brown focus:outline-none focus:border-brown"
+          className="bg-white/50 border hairline rounded-xl px-3 py-2 text-sm text-brown focus:outline-none focus:border-brown disabled:opacity-50"
+          disabled={isAdding || loading}
         >
           <option value="Focus">Focus</option>
           <option value="Task">Task</option>
@@ -87,10 +202,11 @@ export default function MyWorkPage() {
         </select>
         <button
           onClick={handleAddItem}
-          className="px-5 py-2 bg-brown text-cream-deep rounded-xl hover:bg-brown/90 transition-colors flex items-center gap-2 font-mono text-sm font-semibold"
+          disabled={isAdding || loading || !newItemTitle.trim()}
+          className="px-5 py-2 bg-brown text-cream-deep rounded-xl hover:bg-brown/90 transition-colors flex items-center gap-2 font-mono text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Plus className="w-4 h-4" />
-          Add
+          {isAdding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+          {isAdding ? "Saving..." : "Add"}
         </button>
       </div>
 
@@ -100,7 +216,9 @@ export default function MyWorkPage() {
           <Clock className="w-4 h-4" /> In Progress ({activeItems.length})
         </h2>
 
-        {activeItems.length > 0 ? (
+        {loading ? (
+          <div className="text-center py-8 text-muted font-mono">Loading your work...</div>
+        ) : activeItems.length > 0 ? (
           <div className="space-y-3">
             {activeItems.map((item) => (
               <div
@@ -108,7 +226,7 @@ export default function MyWorkPage() {
                 className="rounded-2xl border hairline bg-cream-deep/40 p-5 flex items-center justify-between group hover:border-brown/50 transition-all"
               >
                 <div className="flex items-center gap-4 flex-1">
-                  <button onClick={() => toggleStatus(item.id)} className="text-muted hover:text-brown transition-colors">
+                  <button onClick={() => toggleStatus(item.id, item.status)} className="text-muted hover:text-brown transition-colors">
                     <Circle className="w-6 h-6" />
                   </button>
                   <div>
@@ -151,7 +269,7 @@ export default function MyWorkPage() {
                 className="rounded-2xl border hairline bg-gray-100 p-5 flex items-center justify-between group"
               >
                 <div className="flex items-center gap-4 flex-1">
-                  <button onClick={() => toggleStatus(item.id)} className="text-green-600">
+                  <button onClick={() => toggleStatus(item.id, item.status)} className="text-green-600">
                     <CheckCircle2 className="w-6 h-6" />
                   </button>
                   <h3 className="font-display text-lg text-muted italic line-through">{item.title}</h3>

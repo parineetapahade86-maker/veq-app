@@ -3,10 +3,11 @@
 import { useState, useEffect, useMemo } from "react"
 import { useUser } from "@clerk/nextjs"
 import { createClient } from "@supabase/supabase-js"
-// ✅ CHANGE 1: Share2 aur Check icons add kar diye
-import { BookOpen, Plus, Search, Trash2, Tag, X, Save, FileText, Upload, Loader2, AlertCircle, Filter, Calendar, Share2, Check } from "lucide-react"
+// ✅ CHANGE A: FileDown icon aur PDF export function import kar liya
+import { BookOpen, Plus, Search, Trash2, Tag, X, Save, FileText, Upload, Loader2, AlertCircle, Filter, Calendar, Share2, Check, FileDown } from "lucide-react"
 import { Skeleton } from "@/components/Skeleton"
 import { triggerVEQConfetti } from "@/lib/confetti"
+import { downloadKnowledgeVaultPDF } from "@/lib/export-pdf"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,7 +38,6 @@ function KnowledgeCard({ item, onDelete }: { item: KnowledgeItem; onDelete: (id:
   const [loadingRelated, setLoadingRelated] = useState(false)
   const [showRelated, setShowRelated] = useState(false)
 
-  // ✅ CHANGE 2: Share ke liye nayi states add ki
   const [isSharing, setIsSharing] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -100,9 +100,7 @@ function KnowledgeCard({ item, onDelete }: { item: KnowledgeItem; onDelete: (id:
           </span>
         </div>
 
-        {/* ✅ CHANGE 3: Share aur Delete buttons ko ek saath group kar diya */}
         <div className="flex items-center gap-2">
-          {/* SHARE BUTTON */}
           <button
             onClick={async () => {
               setIsSharing(true)
@@ -116,7 +114,7 @@ function KnowledgeCard({ item, onDelete }: { item: KnowledgeItem; onDelete: (id:
                 if (data.success) {
                   await navigator.clipboard.writeText(data.shareUrl)
                   setCopied(true)
-                  triggerVEQConfetti() // 🎉 VIRAL LOOP MAGIC!
+                  triggerVEQConfetti()
                   setTimeout(() => setCopied(false), 2000)
                 }
               } catch (err) {
@@ -132,7 +130,6 @@ function KnowledgeCard({ item, onDelete }: { item: KnowledgeItem; onDelete: (id:
             {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : copied ? <Check className="w-4 h-4 text-green-600" /> : <Share2 className="w-4 h-4" />}
           </button>
 
-          {/* DELETE BUTTON (Existing) */}
           <button
             onClick={() => onDelete(item.id)}
             className="p-2 text-[#806B58] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
@@ -238,6 +235,7 @@ export default function KnowledgePage() {
   const { user } = useUser()
   const [items, setItems] = useState<KnowledgeItem[]>([])
   const [companyId, setCompanyId] = useState<string>("")
+  const [companyName, setCompanyName] = useState("Company") // ✅ CHANGE B: Company name state for PDF
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -269,6 +267,18 @@ export default function KnowledgePage() {
 
       if (profile?.company_id) {
         setCompanyId(profile.company_id)
+
+        // ✅ Fetch Company Name for the PDF
+        const { data: companyData } = await supabase
+          .from("companies")
+          .select("name")
+          .eq("id", profile.company_id)
+          .single()
+
+        if (companyData?.name) {
+          setCompanyName(companyData.name)
+        }
+
         const res = await fetch('/api/upload-knowledge')
         const result = await res.json()
         if (result.success && result.data) {
@@ -453,6 +463,15 @@ export default function KnowledgePage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+
+        {/* ✅ CHANGE C: EXPORT PDF BUTTON ADDED */}
+        <button
+          onClick={() => downloadKnowledgeVaultPDF('knowledge-vault-container', companyName)}
+          className="px-6 py-3 bg-[#C6A15B] text-[#3A2418] rounded-2xl hover:bg-[#D4AF67] transition-all active:scale-95 duration-200 flex items-center justify-center gap-2 font-mono text-sm font-semibold shadow-sm"
+        >
+          <FileDown className="w-4 h-4" /> Export PDF
+        </button>
+
         <label className="px-6 py-3 bg-[#3A2418] text-[#F4EDE1] rounded-2xl hover:bg-[#4A2F20] transition-colors flex items-center justify-center gap-2 font-mono text-sm font-semibold cursor-pointer">
           <Upload className="w-4 h-4" /> {isUploading ? "Processing..." : "Upload File"}
           <input type="file" accept=".txt,.pdf" onChange={handleFileUpload} disabled={isUploading} className="hidden" />
@@ -545,7 +564,8 @@ export default function KnowledgePage() {
         </div>
       )}
 
-      <div className="space-y-12">
+      {/* ✅ CHANGE D: WRAPPER FOR PDF EXPORT WITH ID */}
+      <div id="knowledge-vault-container" className="space-y-12">
         {loading ? (
           <div className="space-y-6">
             {[1, 2, 3].map((i) => (
