@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Briefcase,
   ClipboardList,
   PlayCircle,
   Calendar,
@@ -27,7 +26,7 @@ import {
   Settings,
   Webhook,
   ScrollText,
-  Code, // ✅ NEW: Code icon imported safely
+  Code,
   CreditCard,
   type LucideIcon,
 } from "lucide-react";
@@ -50,7 +49,7 @@ const sections: NavSection[] = [
     title: "Workspace",
     items: [
       { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
-      { label: "My Work", href: "/dashboard/my-work", icon: Briefcase },
+      // ✅ "My Work" wali line yahan se HATA DI GAYI HAI!
       { label: "Tasks", href: "/dashboard/tasks", icon: CheckSquare },
       { label: "Continuity Vault", href: "/dashboard/knowledge", icon: BookOpen },
     ],
@@ -81,7 +80,6 @@ const sections: NavSection[] = [
     items: [
       { label: "Webhooks", href: "/dashboard/webhooks", icon: Webhook },
       { label: "Plugins", href: "/dashboard/plugins", icon: Plug },
-      // ✅ NEW: Developer API Link Added Safely (Nothing Removed)
       { label: "Developer API", href: "/dashboard/developer", icon: Code },
     ],
   },
@@ -97,11 +95,9 @@ const sections: NavSection[] = [
     title: "System",
     items: [
       { label: "Settings", href: "/dashboard/settings", icon: Settings },
-      // ✅ AUDIT LOGS ADDED HERE (NOTHING REMOVED, 100% SAFE)
       { label: "Audit Logs", href: "/dashboard/audit-logs", icon: ScrollText },
-      // ✅ YE RAHA TUMHARA NAYA SECURITY & TRUST LINK! (100% SAFE ADDITION)
       { label: "Security & Trust", href: "/dashboard/security", icon: ShieldCheck },
-      { label: "Pricing & Billing", href: "/dashboard/pricing", icon: CreditCard }, // (CreditCard import mat bhoolna lucide-react se!)
+      { label: "Pricing & Billing", href: "/dashboard/pricing", icon: CreditCard },
     ],
   },
 ];
