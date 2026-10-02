@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@/utils/supabase/server'
 
-// GET: Fetch all tasks for the current user
+// GET: Fetch all tasks for current user
 export async function GET() {
     try {
         const { userId } = await auth()
@@ -24,7 +24,7 @@ export async function GET() {
             return NextResponse.json({ error: 'Company not found' }, { status: 404 })
         }
 
-        // Fetch tasks from 'tasks' table (NOT knowledge table - 100% safe!)
+        // Fetch tasks from 'tasks' table
         const { data: tasks, error } = await supabase
             .from('tasks')
             .select('*')
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Company not found' }, { status: 404 })
         }
 
-        // Insert into 'tasks' table (NOT knowledge table!)
+        // Insert into 'tasks' table
         const { data, error } = await supabase
             .from('tasks')
             .insert({
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
     }
 }
 
-// PUT: Update a task (e.g., change status)
+// PUT: Update a task
 export async function PUT(request: Request) {
     try {
         const { userId } = await auth()
@@ -114,17 +114,16 @@ export async function PUT(request: Request) {
             return NextResponse.json({ error: 'Task ID is required' }, { status: 400 })
         }
 
-        // Update in 'tasks' table
         const { data, error } = await supabase
             .from('tasks')
             .update({
-                title: title,
-                category: category,
-                status: status,
+                title,
+                category,
+                status,
                 updated_at: new Date().toISOString()
             })
             .eq('id', id)
-            .eq('employee_id', userId) // Only update own tasks
+            .eq('employee_id', userId)
             .select()
             .single()
 
@@ -157,12 +156,11 @@ export async function DELETE(request: Request) {
             return NextResponse.json({ error: 'Task ID is required' }, { status: 400 })
         }
 
-        // Delete from 'tasks' table (NOT knowledge table - 100% safe!)
         const { error } = await supabase
             .from('tasks')
             .delete()
             .eq('id', id)
-            .eq('employee_id', userId) // Only delete own tasks
+            .eq('employee_id', userId)
 
         if (error) {
             console.error('Error deleting task:', error)

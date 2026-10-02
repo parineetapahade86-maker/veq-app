@@ -26,14 +26,12 @@ export default async function DashboardOverviewPage() {
 
   let activeTasks = 0;
   let meetingsThisWeek = 0;
-  let knowledgeItemsCount = 0; // Renamed slightly to avoid conflict with array
+  let knowledgeItemsCount = 0;
   let hasCompletedOnboarding = false;
   let companyName = "Your Company";
   let companyId: string | null = null;
 
-  // NEW: State to hold predictive risk alerts
   let riskAlerts: any[] = [];
-  // ✅ ADDITION 2: State to hold actual knowledge items for the AI Scanner
   let actualKnowledgeItems: any[] = [];
 
   if (supabase) {
@@ -48,7 +46,6 @@ export default async function DashboardOverviewPage() {
       console.error("Profile fetch error:", profileError);
     }
 
-    // If no profile exists, redirect to onboarding
     if (!profile) {
       console.log("No profile found for user, redirecting to onboarding...");
       redirect("/onboarding");
@@ -57,7 +54,6 @@ export default async function DashboardOverviewPage() {
     companyId = profile.company_id;
     hasCompletedOnboarding = profile.has_completed_onboarding ?? false;
 
-    // Fetch counts, company name, and risk alerts only if companyId exists
     if (companyId) {
       const { data: companyData } = await supabase
         .from("companies")
@@ -69,25 +65,26 @@ export default async function DashboardOverviewPage() {
         companyName = companyData.name;
       }
 
-      // Fetch dashboard metrics in parallel
+      // ✅ FIX: Yahan 2 chhote changes kiye hain taaki calculation 100% sahi ho!
       const [tasksResult, meetingsResult, docsResult, alertsResult, knowledgeItemsResult] = await Promise.all([
+        // FIX 1: "pending" ki jagah "In Progress" (jo My Work page use kar raha hai)
         supabase
           .from("tasks")
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId)
-          .eq("status", "pending"),
+          .eq("status", "In Progress"),
 
         supabase
           .from("meetings")
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId),
 
+        // FIX 2: "knowledge_items" ki jagah asli table ka naam "employee_knowledge"
         supabase
-          .from("knowledge_items")
+          .from("employee_knowledge")
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId),
 
-        // NEW: Fetch top Critical/Medium risk alerts for this company
         supabase
           .from("knowledge_risk_alerts")
           .select("user_name, risk_level, risk_score, reason")
@@ -96,9 +93,9 @@ export default async function DashboardOverviewPage() {
           .order("risk_score", { ascending: false })
           .limit(1),
 
-        // ✅ ADDITION 3: Fetch actual items (source_reference, content, metadata) for the AI Gap Scanner
+        // FIX 3: Yahan bhi "employee_knowledge" use kiya AI Gap Detector ke liye
         supabase
-          .from("knowledge_items")
+          .from("employee_knowledge")
           .select("source_reference, content, metadata")
           .eq("company_id", companyId)
       ]);
@@ -107,7 +104,7 @@ export default async function DashboardOverviewPage() {
       meetingsThisWeek = meetingsResult.count ?? 0;
       knowledgeItemsCount = docsResult.count ?? 0;
       riskAlerts = alertsResult.data || [];
-      actualKnowledgeItems = knowledgeItemsResult.data || []; // ✅ Store for the widget
+      actualKnowledgeItems = knowledgeItemsResult.data || [];
 
       console.log("📊 Dashboard Data Live:", {
         activeTasks,
@@ -135,7 +132,6 @@ export default async function DashboardOverviewPage() {
         Your real-time workspace summary. Here is what you have been working on at {companyName}.
       </p>
 
-      {/* ✅ EXISTING: AI PREDICTIVE RISK ALERT (With Action Button) */}
       {riskAlerts.length > 0 && (
         <div className="mb-8 p-6 rounded-2xl border-2 border-red-200 bg-red-50/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
@@ -173,7 +169,6 @@ export default async function DashboardOverviewPage() {
         </div>
       )}
 
-      {/* GETTING STARTED CHECKLIST */}
       {!hasCompletedOnboarding && (
         <div className="mb-12 p-6 md:p-8 rounded-2xl border-2 border-dashed border-gold/40 bg-gold/5">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
