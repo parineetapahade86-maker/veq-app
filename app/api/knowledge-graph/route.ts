@@ -20,20 +20,25 @@ export async function GET() {
             .single()
 
         if (!profile?.company_id) {
-            return NextResponse.json({ error: 'Company not found' }, { status: 404 })
+            return NextResponse.json({ nodes: [], edges: [], stats: { totalNodes: 0, totalEdges: 0, totalDocuments: 0 } })
         }
 
-        // Fetch all knowledge items with entities
-        const { data: knowledgeItems } = await supabase
+        // Fetch all knowledge items
+        const { data: knowledgeItems, error } = await supabase
             .from('employee_knowledge')
             .select('id, source_reference, content, metadata, entities')
             .eq('company_id', profile.company_id)
 
-        if (!knowledgeItems || knowledgeItems.length === 0) {
-            return NextResponse.json({ nodes: [], edges: [] })
+        if (error) {
+            console.error('Error fetching knowledge:', error)
+            return NextResponse.json({ nodes: [], edges: [], stats: { totalNodes: 0, totalEdges: 0, totalDocuments: 0 } })
         }
 
-        // Extract nodes and edges from entities
+        if (!knowledgeItems || knowledgeItems.length === 0) {
+            return NextResponse.json({ nodes: [], edges: [], stats: { totalNodes: 0, totalEdges: 0, totalDocuments: 0 } })
+        }
+
+        // Build nodes and edges
         const nodes: any[] = []
         const edges: any[] = []
         const nodeMap = new Map<string, boolean>()
@@ -46,12 +51,12 @@ export async function GET() {
                     id: docId,
                     type: 'document',
                     data: {
-                        label: item.source_reference || 'Untitled',
+                        label: item.source_reference || 'Untitled Document',
                         type: 'Document'
                     },
                     position: {
-                        x: Math.random() * 800,
-                        y: Math.random() * 600
+                        x: Math.random() * 600 + 50,
+                        y: Math.random() * 400 + 50
                     },
                     style: {
                         background: '#C6A15B',
@@ -60,13 +65,14 @@ export async function GET() {
                         borderRadius: '8px',
                         padding: '10px',
                         fontSize: '12px',
-                        fontWeight: 'bold'
+                        fontWeight: 'bold',
+                        minWidth: '150px'
                     }
                 })
                 nodeMap.set(docId, true)
             }
 
-            // Add entity nodes
+            // Add entity nodes if they exist
             const entities = item.entities || []
             entities.forEach((entity: any) => {
                 const entityId = `${entity.entity_type}-${entity.entity_value}`
@@ -97,6 +103,9 @@ export async function GET() {
                             bgColor = '#EF4444'
                             borderColor = '#B91C1C'
                             break
+                        default:
+                            bgColor = '#E9DED0'
+                            borderColor = '#806B58'
                     }
 
                     nodes.push({
@@ -107,8 +116,8 @@ export async function GET() {
                             type: entity.entity_type
                         },
                         position: {
-                            x: Math.random() * 800,
-                            y: Math.random() * 600
+                            x: Math.random() * 600 + 50,
+                            y: Math.random() * 400 + 50
                         },
                         style: {
                             background: bgColor,
@@ -134,6 +143,12 @@ export async function GET() {
             })
         })
 
+        console.log('Graph built:', {
+            nodes: nodes.length,
+            edges: edges.length,
+            documents: knowledgeItems.length
+        })
+
         return NextResponse.json({
             nodes,
             edges,
@@ -146,6 +161,11 @@ export async function GET() {
 
     } catch (error) {
         console.error('Error fetching knowledge graph:', error)
-        return NextResponse.json({ error: 'Failed to fetch graph' }, { status: 500 })
+        return NextResponse.json({
+            error: 'Failed to fetch graph',
+            nodes: [],
+            edges: [],
+            stats: { totalNodes: 0, totalEdges: 0, totalDocuments: 0 }
+        }, { status: 500 })
     }
 }
