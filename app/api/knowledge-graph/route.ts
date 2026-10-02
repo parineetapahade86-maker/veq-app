@@ -1,16 +1,29 @@
 // app/api/knowledge-graph/route.ts
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { createClient } from '@/utils/supabase/server'
+import { getSupabase } from '@/lib/supabase/server' // ✅ YE FIX HAI!
 
 export async function GET() {
     try {
         const { userId } = await auth()
         if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            return NextResponse.json({
+                nodes: [],
+                edges: [],
+                stats: { totalNodes: 0, totalEdges: 0, totalDocuments: 0 }
+            })
         }
 
-        const supabase = await createClient()
+        const supabase = getSupabase() // ✅ YE FIX HAI!
+
+        if (!supabase) {
+            console.error('Supabase client not available')
+            return NextResponse.json({
+                nodes: [],
+                edges: [],
+                stats: { totalNodes: 0, totalEdges: 0, totalDocuments: 0 }
+            })
+        }
 
         // Get user's company
         const { data: profile } = await supabase
@@ -27,17 +40,25 @@ export async function GET() {
             })
         }
 
-        // Fetch all knowledge items with entities
+        // Fetch all knowledge items
         const { data: knowledgeItems, error } = await supabase
             .from('employee_knowledge')
             .select('id, source_reference, content, metadata, entities, created_at')
             .eq('company_id', profile.company_id)
             .order('created_at', { ascending: false })
 
-        console.log('Fetched knowledge items:', knowledgeItems?.length || 0)
+        console.log(' Fetched knowledge items:', knowledgeItems?.length || 0)
 
-        if (error || !knowledgeItems || knowledgeItems.length === 0) {
-            console.log('No knowledge items found or error:', error)
+        if (error) {
+            console.error('Supabase error:', error)
+            return NextResponse.json({
+                nodes: [],
+                edges: [],
+                stats: { totalNodes: 0, totalEdges: 0, totalDocuments: 0 }
+            })
+        }
+
+        if (!knowledgeItems || knowledgeItems.length === 0) {
             return NextResponse.json({
                 nodes: [],
                 edges: [],
@@ -51,7 +72,7 @@ export async function GET() {
         const nodeMap = new Map<string, boolean>()
         let entityCount = 0
 
-        // ✅ FALLBACK: Agar entities nahi hain, toh content se keywords nikalo
+        // Fallback: Extract keywords from content if no entities
         const extractKeywords = (text: string): string[] => {
             if (!text) return []
             const words = text.split(/\s+/)
@@ -65,7 +86,6 @@ export async function GET() {
                 }
             })
 
-            // Return top 5 most frequent keywords
             const freq: Record<string, number> = {}
             keywords.forEach(k => { freq[k] = (freq[k] || 0) + 1 })
             return Object.entries(freq)
@@ -75,7 +95,7 @@ export async function GET() {
         }
 
         knowledgeItems.forEach((item, index) => {
-            // Add document node (ALWAYS - this is the fallback!)
+            // Add document node (ALWAYS)
             const docId = `doc-${item.id}`
             if (!nodeMap.has(docId)) {
                 nodes.push({
@@ -104,17 +124,17 @@ export async function GET() {
                 nodeMap.set(docId, true)
             }
 
-            // Try to get entities from database
+            // Try entities from database
             let entities = item.entities || []
 
-            // ✅ FALLBACK: Agar entities array khaali hai, toh content se keywords nikalo
+            // Fallback: Extract keywords if no entities
             if (entities.length === 0 && item.content) {
                 const keywords = extractKeywords(item.content)
                 entities = keywords.map(kw => ({
                     entity_type: 'topic',
                     entity_value: kw
                 }))
-                console.log(`Extracted ${keywords.length} keywords from: ${item.source_reference}`)
+                console.log(`🔍 Extracted ${keywords.length} keywords from: ${item.source_reference}`)
             }
 
             // Also try metadata tags
@@ -183,7 +203,7 @@ export async function GET() {
             })
         })
 
-        console.log('✅ Graph built successfully:', {
+        console.log('✅ Graph built:', {
             nodes: nodes.length,
             edges: edges.length,
             documents: knowledgeItems.length,
@@ -201,7 +221,7 @@ export async function GET() {
         })
 
     } catch (error) {
-        console.error('❌ Error fetching knowledge graph:', error)
+        console.error('❌ Error:', error)
         return NextResponse.json({
             error: 'Failed to fetch graph',
             nodes: [],
